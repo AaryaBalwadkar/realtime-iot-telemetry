@@ -81,7 +81,7 @@ services:
       - iot-net
 
   minio:
-    image: minio/minio:RELEASE.2024-08-17T01-24-54Z
+    image: quay.io/minio/minio:RELEASE.2024-08-17T01-24-54Z
     container_name: iot-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -103,7 +103,7 @@ services:
       - iot-net
 
   minio-init:
-    image: minio/mc:RELEASE.2024-08-17T11-33-50Z
+    image: quay.io/minio/mc:RELEASE.2024-08-17T11-33-50Z
     container_name: iot-minio-init
     depends_on:
       minio:
