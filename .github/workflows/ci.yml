@@ -154,13 +154,18 @@ jobs:
 
       - name: Verify no containers crashed
         run: |
-          # Check if any container has an 'exited' status
-          if [ -n "$(docker compose ps --status=exited -q)" ]; then
-            echo "Error: One or more containers crashed upon startup."
-            docker compose logs
+          # Get the names of any services that have exited
+          EXITED_SERVICES=$(docker compose ps --status=exited --services)
+          
+          # Remove 'minio-init' from the list since it is SUPPOSED to exit after setup
+          CRASHED_SERVICES=$(echo "$EXITED_SERVICES" | grep -v "^minio-init$" || true)
+
+          if [ -n "$CRASHED_SERVICES" ]; then
+            echo "Error: The following continuous containers crashed unexpectedly: $CRASHED_SERVICES"
+            docker compose logs $CRASHED_SERVICES
             exit 1
           else
-            echo "Success: All services stayed up."
+            echo "Success: All continuous services stayed up, and init scripts completed."
           fi
 
       - name: Tear down environment
