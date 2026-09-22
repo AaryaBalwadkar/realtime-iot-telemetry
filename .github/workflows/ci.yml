@@ -136,15 +136,33 @@ jobs:
           cache-to: type=gha,mode=max
 
   compose-smoke-test:
-    name: Docker Compose Smoke Test (build only)
+    name: Docker Compose Smoke Test (Runtime)
     runs-on: ubuntu-latest
     needs: [build-images]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build all services via Compose
-        run: docker compose -f docker-compose.yml build
+      - name: Start all services in the background
+        run: docker compose up --build -d
 
-      - name: List built images
-        run: docker images
+      - name: Wait for services to initialize
+        run: sleep 30
+
+      - name: View running containers
+        run: docker compose ps
+
+      - name: Verify no containers crashed
+        run: |
+          # Check if any container has an 'exited' status
+          if [ -n "$(docker compose ps --status=exited -q)" ]; then
+            echo "Error: One or more containers crashed upon startup."
+            docker compose logs
+            exit 1
+          else
+            echo "Success: All services stayed up."
+          fi
+
+      - name: Tear down environment
+        if: always()
+        run: docker compose down -v
