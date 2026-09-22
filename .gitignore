@@ -1,0 +1,10 @@
+# Mosquitto runtime data and logs
+mosquitto/data/
+mosquitto/log/
+
+# Python standard ignores
+__pycache__/
+*.py[cod]
+
+# Environment variables (if you ever add a .env file later)
+.env

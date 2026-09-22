@@ -1,0 +1,4 @@
+kafka-python==2.0.2
+paho-mqtt==1.6.1
+numpy==1.26.4
+python-dateutil==2.9.0.post0
