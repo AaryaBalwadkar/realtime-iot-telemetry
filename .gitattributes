@@ -1,0 +1,2 @@
+# Force LF for shell scripts (Windows CRLF breaks busybox ash in alpine init).
+*.sh text eol=lf

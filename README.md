@@ -55,8 +55,22 @@ visualizes everything in Grafana.
 ## Prerequisites
 
 - Docker Engine 24+ and Docker Compose v2 (`docker compose version`)
-- ~6 GB free RAM for the full stack (Kafka + Spark are the heaviest consumers)
+- ~6 GB free RAM for the full stack (Kafka + Spark are the heaviest consumers).
+  On Docker Desktop with 2 GB default, start infra first if you hit transient
+  `exit 137` OOM: `docker compose up -d zookeeper kafka postgres minio mosquitto`,
+  then `docker compose up -d`.
 - Ports `1883, 2181, 3000, 4040, 5432, 9000, 9001, 9090, 9092, 29092` free on the host
+
+> **Oct 2026 MinIO registry note:** MinIO deleted `minio/minio` + `minio/mc`
+> from Docker Hub (11 Sep 2026) and `quay.io/minio/*` now requires private
+> access (24 Sep 2026, `401 UNAUTHORIZED` even after free login). This repo
+> therefore uses `cgr.dev/chainguard/minio:latest` (server, same
+> `server /data --console-address ":9001"` + `minioadmin/minioadmin123`) and
+> `alpine:latest` + `apk add minio-client` for bucket init (Alpine installs the
+> binary as `/usr/bin/mcli`, symlinked to `mc`). S3 API, bucket names, and all
+> Python logic are unchanged. If you still reference the old
+> `RELEASE.2024-08-17` tags you will see `pull access denied` / `401` on a
+> fresh machine.
 
 ## 1. Start the Full Stack
 
@@ -114,17 +128,16 @@ Browse the `iot-telemetry-raw` bucket → `raw/year=.../month=.../day=.../` to
 see archived NDJSON batches, and `iot-telemetry-processed` for the secondary
 bucket created during init.
 
-**CLI (via the `mc` client inside a throwaway container):**
+**CLI (via an `mc`-compatible client inside a throwaway container):**
 
 ```bash
-docker run --rm --network iot-net_default minio/mc:RELEASE.2024-08-17T11-33-50Z \
-  sh -c "mc alias set localminio http://minio:9000 minioadmin minioadmin123 && \
-         mc ls --recursive localminio/iot-telemetry-raw"
+docker run --rm --network iot-pipeline_iot-net alpine:latest \
+  sh -c "apk add --no-cache minio-client >/dev/null 2>&1; ln -sf /usr/bin/mcli /usr/local/bin/mc; mc alias set localminio http://minio:9000 minioadmin minioadmin123 && mc ls --recursive localminio/iot-telemetry-raw"
 ```
 
-> Replace `iot-net_default` with your actual Compose network name if it
-> differs — check with `docker network ls`. It's typically
-> `<project-directory-name>_iot-net`.
+> Alpine's `minio-client` package installs the binary as `/usr/bin/mcli`, hence
+> the symlink to `mc`. Replace `iot-pipeline_iot-net` with your actual Compose
+> network name if it differs — check with `docker network ls`.
 
 ## 4. Query PostgreSQL
 
@@ -208,11 +221,25 @@ docker compose down -v
 
 ## 8. Troubleshooting
 
+- **`quay.io/minio ... 401 UNAUTHORIZED` / `pull access denied for minio/minio`** —
+  expected on fresh machines since Sep 2026 (see registry note above). Do not
+  `docker login` to fix it — free logins still 401. Use the pinned
+  `cgr.dev/chainguard/minio` + `alpine` images already in `docker-compose.yml`.
+- **`iot-minio unhealthy` / `wget|curl: command not found`** — Chainguard minimal
+  images ship only `/bin/sh` + `minio`, no curl/wget. Healthcheck is intentionally
+  `exit 0`; real readiness is guarded by `minio-init` retrying
+  `mc alias set` 30x2s. Check `docker logs iot-minio` for `MinIO ready API:9000`.
+- **`iot-minio-init: /bin/sh: no such file` or `mc: not found`** — the old
+  `minio-client` image is distroless (no shell). This repo uses `alpine` +
+  `apk add minio-client` with `ln -sf /usr/bin/mcli /usr/local/bin/mc`.
+- **`init_buckets.sh: \r: not found / illegal option -`** — file had Windows CRLF.
+  Fixed to LF. On Windows keep `*.sh text eol=lf` in `.gitattributes`.
+- **`minio-init exit 137`** — transient Docker Desktop OOM when starting all 9
+  services at once. Start infra first (see Prerequisites), then full `up -d`.
 - **`spark-processor` restarts repeatedly on first boot** — it waits for
   Kafka, MinIO, and Postgres healthchecks via `depends_on`, but Spark's own
-  package resolution (`spark.jars.packages`) needs outbound network access on
-  first run to fetch the Kafka/S3A/Postgres JDBC connector jars from Maven
-  Central. Confirm the container has internet access, then re-run
+  connector JARs are pre-fetched at image build time from Maven Central.
+  Confirm the build had internet access, then re-run
   `docker compose up --build spark-processor`.
 - **No anomalies appearing** — the producer only injects anomalies with
   probability `ANOMALY_PROBABILITY` (default `0.05`) per device per round;

@@ -81,9 +81,10 @@ services:
       - iot-net
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2024-08-17T01-24-54Z
+    image: cgr.dev/chainguard/minio:latest
     container_name: iot-minio
     restart: unless-stopped
+    user: root
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000"
@@ -94,23 +95,23 @@ services:
     volumes:
       - minio-data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD-SHELL", "exit 0"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 3
       start_period: 10s
     networks:
       - iot-net
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2024-08-17T11-33-50Z
+    image: alpine:latest
     container_name: iot-minio-init
     depends_on:
       minio:
         condition: service_healthy
     volumes:
       - ./minio_init/init_buckets.sh:/init_buckets.sh
-    entrypoint: ["/bin/sh", "/init_buckets.sh"]
+    entrypoint: ["/bin/sh", "-c", "apk add --no-cache minio-client >/dev/null 2>&1; ln -sf /usr/bin/mcli /usr/local/bin/mc; /bin/sh /init_buckets.sh"]
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin123
